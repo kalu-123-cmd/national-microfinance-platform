@@ -1,19 +1,26 @@
 # Primary language: Java
 *.java    linguist-language=Java
+*.java    linguist-detectable=true
 
 # Config files — exclude from stats
 *.xml     linguist-detectable=false
 *.yml     linguist-detectable=false
 *.yaml    linguist-detectable=false
 *.json    linguist-detectable=false
-*.sql     linguist-detectable=false
+*.sql     linguist-documentation=true
 *.sh      linguist-detectable=false
 *.ps1     linguist-detectable=false
 *.md      linguist-documentation=true
 *.txt     linguist-documentation=true
+*.properties linguist-detectable=false
 
 # Frontend
 *.tsx     linguist-language=TypeScript
 *.ts      linguist-language=TypeScript
 *.css     linguist-detectable=false
 *.html    linguist-detectable=false
+
+# Maven wrapper — vendor
+.mvn/     linguist-vendored=true
+mvnw      linguist-vendored=true
+mvnw.cmd  linguist-vendored=true

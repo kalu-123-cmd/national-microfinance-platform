@@ -1,22 +1,30 @@
 # Tell GitHub Linguist to count Java as the primary language
 # and ignore config/build files from language stats
 
-# Primary language
+# Force Java as primary — override XML/Maven detection
 *.java    linguist-language=Java
+*.java    linguist-detectable=true
 
-# Exclude from language stats
+# Exclude Maven/config files from language stats
 *.xml     linguist-detectable=false
 *.yml     linguist-detectable=false
 *.yaml    linguist-detectable=false
 *.json    linguist-detectable=false
-*.sql     linguist-detectable=false
+*.sql     linguist-documentation=true
 *.md      linguist-documentation=true
 *.txt     linguist-documentation=true
 *.sh      linguist-detectable=false
 *.ps1     linguist-detectable=false
 *.conf    linguist-detectable=false
+*.properties linguist-detectable=false
 
-# Frontend — count but don't override Java
+# Frontend
 *.tsx     linguist-language=TypeScript
 *.ts      linguist-language=TypeScript
 *.css     linguist-detectable=false
+*.html    linguist-detectable=false
+
+# Maven wrapper — vendor
+.mvn/     linguist-vendored=true
+mvnw      linguist-vendored=true
+mvnw.cmd  linguist-vendored=true
