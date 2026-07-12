@@ -1,0 +1,19 @@
+# Primary language: Java
+*.java    linguist-language=Java
+
+# Config files — exclude from stats
+*.xml     linguist-detectable=false
+*.yml     linguist-detectable=false
+*.yaml    linguist-detectable=false
+*.json    linguist-detectable=false
+*.sql     linguist-detectable=false
+*.sh      linguist-detectable=false
+*.ps1     linguist-detectable=false
+*.md      linguist-documentation=true
+*.txt     linguist-documentation=true
+
+# Frontend
+*.tsx     linguist-language=TypeScript
+*.ts      linguist-language=TypeScript
+*.css     linguist-detectable=false
+*.html    linguist-detectable=false

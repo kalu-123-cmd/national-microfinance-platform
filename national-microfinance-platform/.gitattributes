@@ -1,0 +1,22 @@
+# Tell GitHub Linguist to count Java as the primary language
+# and ignore config/build files from language stats
+
+# Primary language
+*.java    linguist-language=Java
+
+# Exclude from language stats
+*.xml     linguist-detectable=false
+*.yml     linguist-detectable=false
+*.yaml    linguist-detectable=false
+*.json    linguist-detectable=false
+*.sql     linguist-detectable=false
+*.md      linguist-documentation=true
+*.txt     linguist-documentation=true
+*.sh      linguist-detectable=false
+*.ps1     linguist-detectable=false
+*.conf    linguist-detectable=false
+
+# Frontend — count but don't override Java
+*.tsx     linguist-language=TypeScript
+*.ts      linguist-language=TypeScript
+*.css     linguist-detectable=false
