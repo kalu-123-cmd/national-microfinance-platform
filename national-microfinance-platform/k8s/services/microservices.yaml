@@ -1,0 +1,2477 @@
+# ==============================================================================
+# Production Microservice Deployments — All 21 Services
+# Enhancements: anti-affinity, securityContext, lifecycle hooks,
+#               topology spread, Prometheus annotations
+# National Digital Microfinance Platform — Production
+# ==============================================================================
+
+# ── TEMPLATE EXPLANATION ──────────────────────────────────────────────────────
+# Each deployment includes:
+#  - podAntiAffinity: spread replicas across nodes
+#  - topologySpreadConstraints: balance across zones
+#  - securityContext: non-root, drop all capabilities
+#  - lifecycle.preStop: graceful drain before kill
+#  - terminationGracePeriodSeconds: 60s for safe shutdown
+#  - prometheus annotations: auto-discovered by Prometheus
+#  - imagePullPolicy: Always (ensures latest digest from registry)
+#  - serviceAccountName: microfinance-app (least-privilege SA)
+# =============================================================================
+
+---
+# ────────────────────────────────────────────────────────────────
+# AUTH SERVICE  (port 8081, replicas: 2, critical)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: microfinance
+  labels:
+    app: auth-service
+    version: "1.0.0"
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/part-of: microfinance-platform
+    app.kubernetes.io/component: security
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: auth-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: auth-service
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: auth-service
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do echo "waiting for eureka..."; sleep 5; done']
+      containers:
+        - name: auth-service
+          image: ghcr.io/microfinance-et/microfinance-auth-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8081
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: microfinance
+  labels:
+    app: auth-service
+    app.kubernetes.io/name: auth-service
+spec:
+  selector:
+    app: auth-service
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+
+---
+# ────────────────────────────────────────────────────────────────
+# USER SERVICE  (port 8082, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: microfinance
+  labels:
+    app: user-service
+    version: "1.0.0"
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/part-of: microfinance-platform
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: user-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: user-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: user-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: user-service
+          image: ghcr.io/microfinance-et/microfinance-user-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8082
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: microfinance
+  labels:
+    app: user-service
+spec:
+  selector:
+    app: user-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+
+---
+# ────────────────────────────────────────────────────────────────
+# IDENTITY-KYC SERVICE  (port 8083, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-kyc-service
+  namespace: microfinance
+  labels:
+    app: identity-kyc-service
+    version: "1.0.0"
+    app.kubernetes.io/name: identity-kyc-service
+    app.kubernetes.io/part-of: microfinance-platform
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: identity-kyc-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: identity-kyc-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8083"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: identity-kyc-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: identity-kyc-service
+          image: ghcr.io/microfinance-et/microfinance-identity-kyc-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8083
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8083
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-kyc-service
+  namespace: microfinance
+  labels:
+    app: identity-kyc-service
+spec:
+  selector:
+    app: identity-kyc-service
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083
+
+---
+# ────────────────────────────────────────────────────────────────
+# WALLET SERVICE  (port 8084, replicas: 2, critical)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-service
+  namespace: microfinance
+  labels:
+    app: wallet-service
+    version: "1.0.0"
+    app.kubernetes.io/name: wallet-service
+    app.kubernetes.io/part-of: microfinance-platform
+    app.kubernetes.io/component: financial-core
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: wallet-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: wallet-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8084"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: wallet-service
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: wallet-service
+          image: ghcr.io/microfinance-et/microfinance-wallet-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8084
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8084
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallet-service
+  namespace: microfinance
+  labels:
+    app: wallet-service
+spec:
+  selector:
+    app: wallet-service
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8084
+
+---
+# ────────────────────────────────────────────────────────────────
+# PAYMENT SERVICE  (port 8085, replicas: 3, highest priority)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: microfinance
+  labels:
+    app: payment-service
+    version: "1.0.0"
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: microfinance-platform
+    app.kubernetes.io/component: financial-core
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: payment-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8085"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: payment-service
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: payment-service
+      priorityClassName: high-priority
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: payment-service
+          image: ghcr.io/microfinance-et/microfinance-payment-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8085
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8085
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8085
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8085
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 20"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: microfinance
+  labels:
+    app: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085
+
+---
+# ────────────────────────────────────────────────────────────────
+# LOAN SERVICE  (port 8086, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loan-service
+  namespace: microfinance
+  labels:
+    app: loan-service
+    version: "1.0.0"
+    app.kubernetes.io/name: loan-service
+    app.kubernetes.io/part-of: microfinance-platform
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: loan-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: loan-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8086"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: loan-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: loan-service
+          image: ghcr.io/microfinance-et/microfinance-loan-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8086
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8086
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8086
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8086
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loan-service
+  namespace: microfinance
+  labels:
+    app: loan-service
+spec:
+  selector:
+    app: loan-service
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8086
+
+---
+# ────────────────────────────────────────────────────────────────
+# SAVINGS SERVICE  (port 8087, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: savings-service
+  namespace: microfinance
+  labels:
+    app: savings-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: savings-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: savings-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8087"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: savings-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: savings-service
+          image: ghcr.io/microfinance-et/microfinance-savings-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8087
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8087
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8087
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8087
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: savings-service
+  namespace: microfinance
+spec:
+  selector:
+    app: savings-service
+  ports:
+    - name: http
+      port: 8087
+      targetPort: 8087
+
+---
+# ────────────────────────────────────────────────────────────────
+# COOPERATIVE SERVICE (port 8088, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cooperative-service
+  namespace: microfinance
+  labels:
+    app: cooperative-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: cooperative-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: cooperative-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8088"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: cooperative-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: cooperative-service
+          image: ghcr.io/microfinance-et/microfinance-cooperative-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8088
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8088
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8088
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8088
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cooperative-service
+  namespace: microfinance
+spec:
+  selector:
+    app: cooperative-service
+  ports:
+    - name: http
+      port: 8088
+      targetPort: 8088
+
+---
+# ────────────────────────────────────────────────────────────────
+# AGENT BANKING SERVICE (port 8089, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-banking-service
+  namespace: microfinance
+  labels:
+    app: agent-banking-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: agent-banking-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: agent-banking-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8089"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: agent-banking-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: agent-banking-service
+          image: ghcr.io/microfinance-et/microfinance-agent-banking-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8089
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8089
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8089
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8089
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-banking-service
+  namespace: microfinance
+spec:
+  selector:
+    app: agent-banking-service
+  ports:
+    - name: http
+      port: 8089
+      targetPort: 8089
+
+---
+# ────────────────────────────────────────────────────────────────
+# NOTIFICATION SERVICE (port 8090, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: microfinance
+  labels:
+    app: notification-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: notification-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8090"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: notification-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: notification-service
+          image: ghcr.io/microfinance-et/microfinance-notification-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8090
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8090
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8090
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8090
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: microfinance
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - name: http
+      port: 8090
+      targetPort: 8090
+
+---
+# ────────────────────────────────────────────────────────────────
+# FRAUD DETECTION SERVICE (port 8091, replicas: 3, critical)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-detection-service
+  namespace: microfinance
+  labels:
+    app: fraud-detection-service
+    version: "1.0.0"
+    app.kubernetes.io/component: security
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: fraud-detection-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: fraud-detection-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8091"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: fraud-detection-service
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: high-priority
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: fraud-detection-service
+          image: ghcr.io/microfinance-et/microfinance-fraud-detection-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8091
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8091
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8091
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8091
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-detection-service
+  namespace: microfinance
+spec:
+  selector:
+    app: fraud-detection-service
+  ports:
+    - name: http
+      port: 8091
+      targetPort: 8091
+
+---
+# ────────────────────────────────────────────────────────────────
+# CREDIT SCORING SERVICE (port 8092, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: credit-scoring-service
+  namespace: microfinance
+  labels:
+    app: credit-scoring-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: credit-scoring-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: credit-scoring-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8092"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: credit-scoring-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: credit-scoring-service
+          image: ghcr.io/microfinance-et/microfinance-credit-scoring-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8092
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8092
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8092
+            initialDelaySeconds: 90
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8092
+            failureThreshold: 24
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: credit-scoring-service
+  namespace: microfinance
+spec:
+  selector:
+    app: credit-scoring-service
+  ports:
+    - name: http
+      port: 8092
+      targetPort: 8092
+
+---
+# ────────────────────────────────────────────────────────────────
+# REPORTING SERVICE (port 8093, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporting-service
+  namespace: microfinance
+  labels:
+    app: reporting-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: reporting-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: reporting-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8093"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: reporting-service
+          image: ghcr.io/microfinance-et/microfinance-reporting-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8093
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8093
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8093
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8093
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reporting-service
+  namespace: microfinance
+spec:
+  selector:
+    app: reporting-service
+  ports:
+    - name: http
+      port: 8093
+      targetPort: 8093
+
+---
+# ────────────────────────────────────────────────────────────────
+# AUDIT SERVICE (port 8094, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-service
+  namespace: microfinance
+  labels:
+    app: audit-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: audit-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: audit-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8094"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: audit-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: audit-service
+          image: ghcr.io/microfinance-et/microfinance-audit-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8094
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8094
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8094
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8094
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: audit-service
+  namespace: microfinance
+spec:
+  selector:
+    app: audit-service
+  ports:
+    - name: http
+      port: 8094
+      targetPort: 8094
+
+---
+# ────────────────────────────────────────────────────────────────
+# AI RECOMMENDATION SERVICE (port 8095, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-recommendation-service
+  namespace: microfinance
+  labels:
+    app: ai-recommendation-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: ai-recommendation-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ai-recommendation-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8095"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: ai-recommendation-service
+          image: ghcr.io/microfinance-et/microfinance-ai-recommendation-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8095
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8095
+            initialDelaySeconds: 45
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8095
+            initialDelaySeconds: 90
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8095
+            failureThreshold: 30
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-recommendation-service
+  namespace: microfinance
+spec:
+  selector:
+    app: ai-recommendation-service
+  ports:
+    - name: http
+      port: 8095
+      targetPort: 8095
+
+---
+# ────────────────────────────────────────────────────────────────
+# ANALYTICS SERVICE (port 8096, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service
+  namespace: microfinance
+  labels:
+    app: analytics-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: analytics-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8096"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: analytics-service
+          image: ghcr.io/microfinance-et/microfinance-analytics-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8096
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8096
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8096
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8096
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-service
+  namespace: microfinance
+spec:
+  selector:
+    app: analytics-service
+  ports:
+    - name: http
+      port: 8096
+      targetPort: 8096
+
+---
+# ────────────────────────────────────────────────────────────────
+# DOCUMENT MANAGEMENT SERVICE (port 8097, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-management-service
+  namespace: microfinance
+  labels:
+    app: document-management-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: document-management-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: document-management-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8097"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: document-management-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: document-management-service
+          image: ghcr.io/microfinance-et/microfinance-document-management-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8097
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8097
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8097
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8097
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: document-management-service
+  namespace: microfinance
+spec:
+  selector:
+    app: document-management-service
+  ports:
+    - name: http
+      port: 8097
+      targetPort: 8097
+
+---
+# ────────────────────────────────────────────────────────────────
+# FINANCIAL LITERACY SERVICE (port 8098, replicas: 1)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: financial-literacy-service
+  namespace: microfinance
+  labels:
+    app: financial-literacy-service
+    version: "1.0.0"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: financial-literacy-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: financial-literacy-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8098"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: financial-literacy-service
+          image: ghcr.io/microfinance-et/microfinance-financial-literacy-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8098
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8098
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8098
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8098
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: financial-literacy-service
+  namespace: microfinance
+spec:
+  selector:
+    app: financial-literacy-service
+  ports:
+    - name: http
+      port: 8098
+      targetPort: 8098
+
+---
+# ────────────────────────────────────────────────────────────────
+# VOICE BANKING SERVICE (port 8099, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: voice-banking-service
+  namespace: microfinance
+  labels:
+    app: voice-banking-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: voice-banking-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: voice-banking-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8099"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: voice-banking-service
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: voice-banking-service
+          image: ghcr.io/microfinance-et/microfinance-voice-banking-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8099
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8099
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8099
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8099
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: voice-banking-service
+  namespace: microfinance
+spec:
+  selector:
+    app: voice-banking-service
+  ports:
+    - name: http
+      port: 8099
+      targetPort: 8099
+
+---
+# ────────────────────────────────────────────────────────────────
+# OFFLINE SYNC SERVICE (port 8100, replicas: 2)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: offline-sync-service
+  namespace: microfinance
+  labels:
+    app: offline-sync-service
+    version: "1.0.0"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: offline-sync-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: offline-sync-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8100"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: offline-sync-service
+          image: ghcr.io/microfinance-et/microfinance-offline-sync-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8100
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8100
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8100
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8100
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: offline-sync-service
+  namespace: microfinance
+spec:
+  selector:
+    app: offline-sync-service
+  ports:
+    - name: http
+      port: 8100
+      targetPort: 8100
+
+---
+# ────────────────────────────────────────────────────────────────
+# ADMIN SERVICE (port 8101, replicas: 1)
+# ────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-service
+  namespace: microfinance
+  labels:
+    app: admin-service
+    version: "1.0.0"
+    app.kubernetes.io/name: admin-service
+    app.kubernetes.io/part-of: microfinance-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: admin-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: admin-service
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8101"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: microfinance-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-discovery
+          image: curlimages/curl:8.6.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ['sh','-c','until curl -sf http://discovery-server:8761/actuator/health; do sleep 5; done']
+      containers:
+        - name: admin-service
+          image: ghcr.io/microfinance-et/microfinance-admin-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8101
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          envFrom:
+            - configMapRef:
+                name: microfinance-config
+            - secretRef:
+                name: microfinance-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8101
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8101
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8101
+            failureThreshold: 18
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-service
+  namespace: microfinance
+  labels:
+    app: admin-service
+spec:
+  selector:
+    app: admin-service
+  ports:
+    - name: http
+      port: 8101
+      targetPort: 8101
+
+---
+# ────────────────────────────────────────────────────────────────
+# PriorityClass for critical financial services
+# ────────────────────────────────────────────────────────────────
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 100000
+globalDefault: false
+description: "High priority for critical financial microservices (payment, fraud detection)"

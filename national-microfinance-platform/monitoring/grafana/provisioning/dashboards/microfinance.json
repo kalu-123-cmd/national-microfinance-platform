@@ -1,0 +1,53 @@
+{
+  "dashboard": {
+    "title": "National Microfinance Platform Overview",
+    "tags": ["microfinance", "overview"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Health",
+        "type": "stat",
+        "targets": [{"expr": "up{job='spring-boot-services'}"}],
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4}
+      },
+      {
+        "id": 2,
+        "title": "Request Rate",
+        "type": "graph",
+        "targets": [{"expr": "rate(http_server_requests_seconds_count[5m])"}],
+        "gridPos": {"x": 6, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 3,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [{"expr": "rate(http_server_requests_seconds_count{status=~'5..'}[5m])"}],
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 4,
+        "title": "P95 Latency",
+        "type": "graph",
+        "targets": [{"expr": "histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m]))"}],
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 5,
+        "title": "JVM Memory",
+        "type": "graph",
+        "targets": [{"expr": "jvm_memory_used_bytes"}],
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8}
+      },
+      {
+        "id": 6,
+        "title": "Database Connections",
+        "type": "graph",
+        "targets": [{"expr": "hikaricp_connections_active"}],
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8}
+      }
+    ],
+    "schemaVersion": 38,
+    "version": 1
+  }
+}

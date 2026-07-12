@@ -1,0 +1,185 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: ["http://localhost:3000","https://microfinance.gov.et"]
+            allowedMethods: ["GET","POST","PUT","DELETE","PATCH","OPTIONS"]
+            allowedHeaders: ["*"]
+            allowCredentials: true
+            maxAge: 3600
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates: [Path=/api/v1/auth/**]
+          filters:
+            - name: CircuitBreaker
+              args: {name: auth-cb, fallbackUri: forward:/fallback/auth}
+
+        - id: user-service
+          uri: lb://user-service
+          predicates: [Path=/api/v1/users/**]
+          filters:
+            - name: CircuitBreaker
+              args: {name: user-cb, fallbackUri: forward:/fallback/default}
+
+        - id: identity-kyc-service
+          uri: lb://identity-kyc-service
+          predicates: [Path=/api/v1/kyc/**]
+
+        - id: wallet-service
+          uri: lb://wallet-service
+          predicates: [Path=/api/v1/wallets/**]
+          filters:
+            - name: CircuitBreaker
+              args: {name: wallet-cb, fallbackUri: forward:/fallback/wallet}
+
+        - id: payment-service
+          uri: lb://payment-service
+          predicates: [Path=/api/v1/payments/**]
+          filters:
+            - name: CircuitBreaker
+              args: {name: payment-cb, fallbackUri: forward:/fallback/payment}
+
+        - id: loan-service
+          uri: lb://loan-service
+          predicates: [Path=/api/v1/loans/**]
+          filters:
+            - name: CircuitBreaker
+              args: {name: loan-cb, fallbackUri: forward:/fallback/loan}
+
+        - id: savings-service
+          uri: lb://savings-service
+          predicates: [Path=/api/v1/savings/**]
+
+        - id: cooperative-service
+          uri: lb://cooperative-service
+          predicates: [Path=/api/v1/cooperatives/**]
+
+        - id: agent-banking-service
+          uri: lb://agent-banking-service
+          predicates: [Path=/api/v1/agents/**]
+
+        - id: notification-service
+          uri: lb://notification-service
+          predicates: [Path=/api/v1/notifications/**]
+
+        - id: fraud-detection-service
+          uri: lb://fraud-detection-service
+          predicates: [Path=/api/v1/fraud/**]
+
+        - id: credit-scoring-service
+          uri: lb://credit-scoring-service
+          predicates: [Path=/api/v1/credit/**]
+
+        - id: ai-recommendation-service
+          uri: lb://ai-recommendation-service
+          predicates: [Path=/api/v1/ai/**]
+
+        - id: reporting-service
+          uri: lb://reporting-service
+          predicates: [Path=/api/v1/reports/**]
+
+        - id: analytics-service
+          uri: lb://analytics-service
+          predicates: [Path=/api/v1/analytics/**]
+
+        - id: financial-literacy-service
+          uri: lb://financial-literacy-service
+          predicates: [Path=/api/v1/literacy/**]
+
+        - id: voice-banking-service
+          uri: lb://voice-banking-service
+          predicates: [Path=/api/v1/voice/**]
+
+        - id: offline-sync-service
+          uri: lb://offline-sync-service
+          predicates: [Path=/api/v1/sync/**]
+
+        - id: document-management-service
+          uri: lb://document-management-service
+          predicates: [Path=/api/v1/documents/**]
+
+        - id: audit-service
+          uri: lb://audit-service
+          predicates: [Path=/api/v1/audit/**]
+
+        - id: admin-service
+          uri: lb://admin-service
+          predicates: [Path=/api/v1/admin/**]
+
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 30s
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eurekauser:eurekapass@${EUREKA_HOST:localhost}:8761/eureka/
+  instance:
+    prefer-ip-address: false
+
+jwt:
+  secret: ${JWT_SECRET:microfinance-jwt-secret-key-must-be-32-chars-min}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        permittedNumberOfCallsInHalfOpenState: 3
+        waitDurationInOpenState: 30s
+        failureRateThreshold: 50
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+
+springdoc:
+  swagger-ui:
+    urls:
+      - name: auth-service
+        url: /api/v1/auth/v3/api-docs
+      - name: user-service
+        url: /api/v1/users/v3/api-docs
+      - name: wallet-service
+        url: /api/v1/wallets/v3/api-docs
+      - name: payment-service
+        url: /api/v1/payments/v3/api-docs
+      - name: loan-service
+        url: /api/v1/loans/v3/api-docs
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    com.microfinance.gateway: DEBUG

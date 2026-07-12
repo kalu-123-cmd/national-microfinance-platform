@@ -1,0 +1,142 @@
+# ==============================================================================
+# RBAC — ServiceAccounts, ClusterRoles, RoleBindings
+# National Digital Microfinance Platform — Production
+# ==============================================================================
+
+# ── ServiceAccount for microservices ──────────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: microfinance-app
+  namespace: microfinance
+  labels:
+    app.kubernetes.io/component: serviceaccount
+    app.kubernetes.io/part-of: microfinance-platform
+automountServiceAccountToken: false
+
+---
+# ── ServiceAccount for Prometheus (needs pod/endpoint discovery) ──────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: microfinance-monitoring
+  labels:
+    app.kubernetes.io/component: prometheus
+
+---
+# ── ServiceAccount for Filebeat DaemonSet ─────────────────────────────────────
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: microfinance-elk
+  labels:
+    app.kubernetes.io/component: filebeat
+
+---
+# ── ClusterRole for Prometheus ────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-cluster-role
+  labels:
+    app.kubernetes.io/component: prometheus
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+      - namespaces
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-cluster-role-binding
+  labels:
+    app.kubernetes.io/component: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: microfinance-monitoring
+
+---
+# ── ClusterRole for Filebeat ──────────────────────────────────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat-cluster-role
+  labels:
+    app.kubernetes.io/component: filebeat
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat-cluster-role-binding
+  labels:
+    app.kubernetes.io/component: filebeat
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: filebeat-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: microfinance-elk
+
+---
+# ── Role for microservices (read their own secrets/configmaps) ─────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: microfinance-app-role
+  namespace: microfinance
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    resourceNames: ["microfinance-config", "microfinance-secrets"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: microfinance-app-role-binding
+  namespace: microfinance
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: microfinance-app-role
+subjects:
+  - kind: ServiceAccount
+    name: microfinance-app
+    namespace: microfinance

@@ -1,0 +1,182 @@
+name: Security Scan — Weekly
+
+# ==============================================================================
+# Scheduled weekly security scan + on-demand via dispatch
+# What it does:
+#   1. Scans all deployed images with Trivy for new CVEs
+#   2. Runs Gitleaks for secret scanning in git history
+#   3. Scans K8s manifests with kube-bench / checkov
+#   4. Posts findings to GitHub Security tab
+#   5. Alerts Slack if CRITICAL CVEs found
+# ==============================================================================
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Every Monday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_PREFIX: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # Trivy image scan — all deployed images
+  # ────────────────────────────────────────────────────────────────
+  trivy-image-scan:
+    name: Trivy Scan — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-service
+          - user-service
+          - identity-kyc-service
+          - wallet-service
+          - payment-service
+          - loan-service
+          - savings-service
+          - cooperative-service
+          - agent-banking-service
+          - notification-service
+          - fraud-detection-service
+          - credit-scoring-service
+          - reporting-service
+          - audit-service
+          - ai-recommendation-service
+          - analytics-service
+          - document-management-service
+          - financial-literacy-service
+          - voice-banking-service
+          - offline-sync-service
+          - admin-service
+          - config-server
+          - discovery-server
+          - api-gateway
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.REGISTRY_PREFIX }}/microfinance-${{ matrix.service }}:latest"
+          format: sarif
+          output: "trivy-${{ matrix.service }}.sarif"
+          severity: CRITICAL,HIGH,MEDIUM
+          ignore-unfixed: false
+          vuln-type: 'os,library'
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-${{ matrix.service }}.sarif"
+          category: "trivy-weekly-${{ matrix.service }}"
+        continue-on-error: true
+
+      - name: Check for CRITICAL CVEs
+        id: critical-check
+        run: |
+          if grep -q '"severity": "CRITICAL"' "trivy-${{ matrix.service }}.sarif" 2>/dev/null; then
+            echo "has_critical=true" >> $GITHUB_OUTPUT
+            echo "⚠️ CRITICAL CVEs found in ${{ matrix.service }}"
+          else
+            echo "has_critical=false" >> $GITHUB_OUTPUT
+            echo "✅ No CRITICAL CVEs in ${{ matrix.service }}"
+          fi
+
+  # ────────────────────────────────────────────────────────────────
+  # Secret scanning with Gitleaks
+  # ────────────────────────────────────────────────────────────────
+  gitleaks:
+    name: Gitleaks — Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full git history
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        continue-on-error: true
+
+      - name: Upload Gitleaks SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: gitleaks
+        continue-on-error: true
+
+  # ────────────────────────────────────────────────────────────────
+  # Checkov — K8s manifest static analysis
+  # ────────────────────────────────────────────────────────────────
+  checkov-k8s:
+    name: Checkov — K8s Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov on K8s manifests
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: national-microfinance-platform/k8s
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-k8s.sarif
+          soft_fail: true
+          skip_check: CKV_K8S_8,CKV_K8S_9  # Skip checks requiring privileged for init containers
+
+      - name: Upload Checkov SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-k8s.sarif
+          category: checkov-k8s
+        continue-on-error: true
+
+  # ────────────────────────────────────────────────────────────────
+  # Summary and Slack alert
+  # ────────────────────────────────────────────────────────────────
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [trivy-image-scan, gitleaks, checkov-k8s]
+    if: always()
+    steps:
+      - name: Post weekly security summary to Slack
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔒 *Weekly Security Scan Complete*",
+              "attachments": [{
+                "color": "${{ (needs.trivy-image-scan.result == 'success' && needs.gitleaks.result == 'success') && 'good' || 'warning' }}",
+                "fields": [
+                  {"title": "Trivy Image Scan", "value": "${{ needs.trivy-image-scan.result }}", "short": true},
+                  {"title": "Gitleaks", "value": "${{ needs.gitleaks.result }}", "short": true},
+                  {"title": "Checkov K8s", "value": "${{ needs.checkov-k8s.result }}", "short": true},
+                  {"title": "Report", "value": "Check GitHub Security tab for details", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

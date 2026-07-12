@@ -1,0 +1,276 @@
+# ==============================================================================
+# PodDisruptionBudgets — All Critical Services
+# National Digital Microfinance Platform — Production
+# ==============================================================================
+
+# ── auth-service ───────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: auth-service
+
+---
+# ── user-service ───────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: user-service
+
+---
+# ── identity-kyc-service ───────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: identity-kyc-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: identity-kyc-service
+
+---
+# ── wallet-service ─────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wallet-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: wallet-service
+
+---
+# ── payment-service (highest criticality) ─────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: payment-service
+
+---
+# ── loan-service ───────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: loan-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: loan-service
+
+---
+# ── savings-service ────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: savings-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: savings-service
+
+---
+# ── cooperative-service ────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cooperative-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cooperative-service
+
+---
+# ── agent-banking-service ──────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agent-banking-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: agent-banking-service
+
+---
+# ── notification-service ───────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: notification-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: notification-service
+
+---
+# ── fraud-detection-service ────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fraud-detection-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: fraud-detection-service
+
+---
+# ── credit-scoring-service ─────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: credit-scoring-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: credit-scoring-service
+
+---
+# ── audit-service ──────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: audit-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: audit-service
+
+---
+# ── reporting-service ──────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: reporting-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: reporting-service
+
+---
+# ── ai-recommendation-service ─────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai-recommendation-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ai-recommendation-service
+
+---
+# ── analytics-service ──────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: analytics-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: analytics-service
+
+---
+# ── offline-sync-service ───────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: offline-sync-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: offline-sync-service
+
+---
+# ── voice-banking-service ──────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: voice-banking-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: voice-banking-service
+
+---
+# ── document-management-service ───────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: document-management-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: document-management-service
+
+---
+# ── financial-literacy-service ─────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: financial-literacy-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: financial-literacy-service
+
+---
+# ── admin-service ──────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: admin-service-pdb
+  namespace: microfinance
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: admin-service

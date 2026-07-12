@@ -1,0 +1,4 @@
+name: agent-banking-service
+version: 0.1.0
+description: Agent Banking microservice (skeleton)
+maintainer: devops@example.com

@@ -1,0 +1,250 @@
+{
+  "policies": {
+    "microfinance-app-policy": {
+      "_meta": {
+        "description": "ILM policy for application logs — 90-day retention",
+        "created_by": "microfinance-platform-devops"
+      },
+      "policy": {
+        "phases": {
+          "hot": {
+            "min_age": "0ms",
+            "actions": {
+              "rollover": {
+                "max_primary_shard_size": "50gb",
+                "max_age": "1d",
+                "max_docs": 10000000
+              },
+              "set_priority": {
+                "priority": 100
+              }
+            }
+          },
+          "warm": {
+            "min_age": "3d",
+            "actions": {
+              "shrink": {
+                "number_of_shards": 1
+              },
+              "forcemerge": {
+                "max_num_segments": 1
+              },
+              "set_priority": {
+                "priority": 50
+              },
+              "allocate": {
+                "number_of_replicas": 1
+              }
+            }
+          },
+          "cold": {
+            "min_age": "30d",
+            "actions": {
+              "allocate": {
+                "number_of_replicas": 0,
+                "require": {
+                  "data": "cold"
+                }
+              },
+              "set_priority": {
+                "priority": 0
+              }
+            }
+          },
+          "delete": {
+            "min_age": "90d",
+            "actions": {
+              "delete": {
+                "delete_searchable_snapshot": true
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "microfinance-audit-policy": {
+      "_meta": {
+        "description": "ILM policy for audit and fraud logs — 7-year retention (regulatory compliance)",
+        "created_by": "microfinance-platform-devops"
+      },
+      "policy": {
+        "phases": {
+          "hot": {
+            "min_age": "0ms",
+            "actions": {
+              "rollover": {
+                "max_primary_shard_size": "30gb",
+                "max_age": "1d"
+              },
+              "set_priority": {
+                "priority": 100
+              }
+            }
+          },
+          "warm": {
+            "min_age": "7d",
+            "actions": {
+              "shrink": {
+                "number_of_shards": 1
+              },
+              "forcemerge": {
+                "max_num_segments": 1
+              },
+              "set_priority": {
+                "priority": 50
+              },
+              "allocate": {
+                "number_of_replicas": 1
+              }
+            }
+          },
+          "cold": {
+            "min_age": "90d",
+            "actions": {
+              "allocate": {
+                "number_of_replicas": 1,
+                "require": {
+                  "data": "cold"
+                }
+              },
+              "set_priority": {
+                "priority": 10
+              }
+            }
+          },
+          "frozen": {
+            "min_age": "365d",
+            "actions": {
+              "searchable_snapshot": {
+                "snapshot_repository": "microfinance-audit-snapshots"
+              }
+            }
+          },
+          "delete": {
+            "min_age": "2555d",
+            "actions": {
+              "delete": {
+                "delete_searchable_snapshot": false
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+
+  "index_templates": {
+    "microfinance-app": {
+      "index_patterns": ["microfinance-app-*", "microfinance-auth-*", "microfinance-payment-*", "microfinance-wallet-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 2,
+          "number_of_replicas": 1,
+          "refresh_interval": "5s",
+          "index.lifecycle.name": "microfinance-app-policy",
+          "index.lifecycle.rollover_alias": "microfinance-app"
+        },
+        "mappings": {
+          "dynamic": "true",
+          "properties": {
+            "@timestamp": { "type": "date" },
+            "message": { "type": "text", "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } } },
+            "log_level": { "type": "keyword" },
+            "log_message": { "type": "text" },
+            "logger": { "type": "keyword" },
+            "thread": { "type": "keyword" },
+            "pid": { "type": "integer" },
+            "trace_id": { "type": "keyword" },
+            "span_id": { "type": "keyword" },
+            "stack_trace": { "type": "text" },
+            "k8s_namespace": { "type": "keyword" },
+            "k8s_pod": { "type": "keyword" },
+            "k8s_container": { "type": "keyword" },
+            "k8s_node": { "type": "keyword" },
+            "environment": { "type": "keyword" },
+            "platform": { "type": "keyword" },
+            "region": { "type": "keyword" },
+            "geoip": {
+              "type": "object",
+              "properties": {
+                "ip": { "type": "ip" },
+                "country_name": { "type": "keyword" },
+                "city_name": { "type": "keyword" },
+                "location": { "type": "geo_point" }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "microfinance-audit": {
+      "index_patterns": ["microfinance-audit-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 2,
+          "number_of_replicas": 2,
+          "refresh_interval": "10s",
+          "index.lifecycle.name": "microfinance-audit-policy",
+          "index.lifecycle.rollover_alias": "microfinance-audit"
+        },
+        "mappings": {
+          "dynamic": "true",
+          "properties": {
+            "@timestamp": { "type": "date" },
+            "message": { "type": "text" },
+            "log_level": { "type": "keyword" },
+            "action": { "type": "keyword" },
+            "user_id": { "type": "keyword" },
+            "resource": { "type": "keyword" },
+            "resource_id": { "type": "keyword" },
+            "ip_address": { "type": "ip" },
+            "status": { "type": "keyword" },
+            "trace_id": { "type": "keyword" },
+            "k8s_pod": { "type": "keyword" },
+            "k8s_container": { "type": "keyword" }
+          }
+        }
+      }
+    },
+
+    "microfinance-fraud": {
+      "index_patterns": ["microfinance-fraud-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 2,
+          "number_of_replicas": 2,
+          "refresh_interval": "1s",
+          "index.lifecycle.name": "microfinance-audit-policy",
+          "index.lifecycle.rollover_alias": "microfinance-fraud"
+        },
+        "mappings": {
+          "dynamic": "true",
+          "properties": {
+            "@timestamp": { "type": "date" },
+            "message": { "type": "text" },
+            "log_level": { "type": "keyword" },
+            "alert_type": { "type": "keyword" },
+            "risk_score": { "type": "float" },
+            "user_id": { "type": "keyword" },
+            "transaction_id": { "type": "keyword" },
+            "amount": { "type": "double" },
+            "currency": { "type": "keyword" },
+            "ip_address": { "type": "ip" },
+            "geoip": {
+              "type": "object",
+              "properties": {
+                "ip": { "type": "ip" },
+                "country_name": { "type": "keyword" },
+                "city_name": { "type": "keyword" },
+                "location": { "type": "geo_point" }
+              }
+            },
+            "k8s_pod": { "type": "keyword" }
+          }
+        }
+      }
+    }
+  }
+}

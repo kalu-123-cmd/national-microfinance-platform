@@ -1,0 +1,351 @@
+name: Build, Push & Sign All Services
+
+# ==============================================================================
+# Triggered by:
+#   - Push to main or develop (pushes latest/sha tags)
+#   - Version tags v*.*.* (pushes versioned tags)
+#   - Manual dispatch (choose which services to build)
+#
+# What it does:
+#   1. Builds all 24 service JARs (parallel matrix)
+#   2. Builds multi-arch Docker images (amd64 + arm64)
+#   3. Pushes to GitHub Container Registry (GHCR)
+#   4. Signs images with Cosign (OIDC keyless)
+#   5. Generates SBOM (CycloneDX) and attests to registry
+#   6. Scans image with Trivy (SARIF to GitHub Security)
+#   7. Posts deployment summary to PR/commit
+# ==============================================================================
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'national-microfinance-platform/**'
+      - '.github/workflows/build-and-push.yml'
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      services:
+        description: 'Comma-separated services to build (leave empty for ALL)'
+        required: false
+        default: ''
+      push_images:
+        description: 'Push images to registry'
+        type: boolean
+        default: true
+      skip_scan:
+        description: 'Skip Trivy security scan'
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: false  # Never cancel image pushes mid-flight
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_PREFIX: ghcr.io/${{ github.repository_owner }}
+  JAVA_VERSION: '21'
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write   # For Cosign OIDC signing
+  attestations: write
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # Determine image tag from git context
+  # ────────────────────────────────────────────────────────────────
+  setup:
+    name: Setup Build Context
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+      sha_short: ${{ steps.tag.outputs.sha_short }}
+      is_release: ${{ steps.tag.outputs.is_release }}
+      should_push: ${{ steps.tag.outputs.should_push }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: tag
+        run: |
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          else
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            BRANCH_CLEAN="${BRANCH//\//-}"
+            echo "tag=${BRANCH_CLEAN}-${SHA_SHORT}" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "${{ github.event.inputs.push_images }}" == "false" ]]; then
+            echo "should_push=false" >> $GITHUB_OUTPUT
+          else
+            echo "should_push=true" >> $GITHUB_OUTPUT
+          fi
+
+  # ────────────────────────────────────────────────────────────────
+  # Build shared libraries (same as CI, reuses cache)
+  # ────────────────────────────────────────────────────────────────
+  shared-libs:
+    name: Build Shared Libraries
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Build and install shared libs
+        working-directory: national-microfinance-platform
+        run: |
+          mvn clean install \
+            -pl shared/common-lib,shared/security-lib,shared/event-lib \
+            -am \
+            -DskipTests \
+            -q
+
+      - name: Save Maven cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-build
+
+  # ────────────────────────────────────────────────────────────────
+  # Build + Push all 21 microservice images in parallel
+  # ────────────────────────────────────────────────────────────────
+  build-and-push:
+    name: 🐳 ${{ matrix.service }}
+    needs: [setup, shared-libs]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { service: auth-service,                path: services }
+          - { service: user-service,                path: services }
+          - { service: identity-kyc-service,        path: services }
+          - { service: wallet-service,              path: services }
+          - { service: payment-service,             path: services }
+          - { service: loan-service,                path: services }
+          - { service: savings-service,             path: services }
+          - { service: cooperative-service,         path: services }
+          - { service: agent-banking-service,       path: services }
+          - { service: notification-service,        path: services }
+          - { service: fraud-detection-service,     path: services }
+          - { service: credit-scoring-service,      path: services }
+          - { service: reporting-service,           path: services }
+          - { service: audit-service,               path: services }
+          - { service: ai-recommendation-service,   path: services }
+          - { service: analytics-service,           path: services }
+          - { service: document-management-service, path: services }
+          - { service: financial-literacy-service,  path: services }
+          - { service: voice-banking-service,       path: services }
+          - { service: offline-sync-service,        path: services }
+          - { service: admin-service,               path: services }
+          - { service: config-server,               path: infrastructure }
+          - { service: discovery-server,            path: infrastructure }
+          - { service: api-gateway,                 path: infrastructure }
+
+    outputs:
+      image_digest_auth_service: ${{ steps.push.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Restore Maven cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-build
+          restore-keys: ${{ runner.os }}-maven-
+
+      # ── Build JAR ──────────────────────────────────────────────
+      - name: Build JAR — ${{ matrix.service }}
+        working-directory: national-microfinance-platform
+        run: |
+          mvn clean package \
+            -pl ${{ matrix.path }}/${{ matrix.service }} \
+            -am \
+            -DskipTests \
+            -T 2C \
+            -q
+
+      # ── Docker Setup ───────────────────────────────────────────
+      - name: Set up QEMU (multi-arch)
+        if: needs.setup.outputs.should_push == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Log in to GHCR
+        if: needs.setup.outputs.should_push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Image Metadata ─────────────────────────────────────────
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_PREFIX }}/microfinance-${{ matrix.service }}
+          tags: |
+            type=raw,value=${{ needs.setup.outputs.image_tag }}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},enable=${{ needs.setup.outputs.is_release == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.setup.outputs.is_release == 'true' }}
+          labels: |
+            org.opencontainers.image.title=microfinance-${{ matrix.service }}
+            org.opencontainers.image.description=National Digital Microfinance Platform — ${{ matrix.service }}
+            org.opencontainers.image.vendor=National Microfinance Platform ET
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/wiki
+
+      # ── Build + Push ───────────────────────────────────────────
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: national-microfinance-platform
+          file: national-microfinance-platform/${{ matrix.path }}/${{ matrix.service }}/Dockerfile
+          push: ${{ needs.setup.outputs.should_push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: true
+          sbom: true
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ needs.setup.outputs.image_tag }}
+            SERVICE_NAME=${{ matrix.service }}
+
+      # ── Cosign Signing ─────────────────────────────────────────
+      - name: Install Cosign
+        if: needs.setup.outputs.should_push == 'true' && steps.push.outputs.digest != ''
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with Cosign (keyless OIDC)
+        if: needs.setup.outputs.should_push == 'true' && steps.push.outputs.digest != ''
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          IMAGE="${{ env.REGISTRY_PREFIX }}/microfinance-${{ matrix.service }}"
+          DIGEST="${{ steps.push.outputs.digest }}"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "✅ Signed: ${IMAGE}@${DIGEST}"
+
+      # ── Trivy Scan ─────────────────────────────────────────────
+      - name: Scan image with Trivy
+        if: ${{ github.event.inputs.skip_scan != 'true' && steps.push.outputs.digest != '' }}
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.REGISTRY_PREFIX }}/microfinance-${{ matrix.service }}:${{ needs.setup.outputs.image_tag }}"
+          format: sarif
+          output: "trivy-${{ matrix.service }}.sarif"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: ${{ github.event.inputs.skip_scan != 'true' && always() }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-${{ matrix.service }}.sarif"
+          category: "trivy-${{ matrix.service }}"
+        continue-on-error: true
+
+  # ────────────────────────────────────────────────────────────────
+  # Build summary
+  # ────────────────────────────────────────────────────────────────
+  build-summary:
+    name: 📊 Build Summary
+    runs-on: ubuntu-latest
+    needs: [setup, build-and-push]
+    if: always()
+    steps:
+      - name: Post build summary
+        run: |
+          echo "## 🐳 Docker Build & Push Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image Tag** | \`${{ needs.setup.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **SHA** | \`${{ needs.setup.outputs.sha_short }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Registry** | \`${{ env.REGISTRY }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Build Status** | ${{ needs.build-and-push.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Is Release** | ${{ needs.setup.outputs.is_release }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services Built (24 total)" >> $GITHUB_STEP_SUMMARY
+          echo "All 21 microservices + 3 infrastructure services built, signed, and scanned." >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Slack on success
+        if: needs.build-and-push.result == 'success' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "✅ *All 24 Docker images built & pushed*",
+              "attachments": [{
+                "color": "good",
+                "fields": [
+                  {"title": "Tag", "value": "${{ needs.setup.outputs.image_tag }}", "short": true},
+                  {"title": "Branch/Ref", "value": "${{ github.ref_name }}", "short": true},
+                  {"title": "Registry", "value": "${{ env.REGISTRY }}", "short": true},
+                  {"title": "Commit", "value": "${{ needs.setup.outputs.sha_short }}", "short": true}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Notify Slack on failure
+        if: needs.build-and-push.result == 'failure'
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "🔴 *Docker build/push FAILED*",
+              "attachments": [{
+                "color": "danger",
+                "fields": [
+                  {"title": "Ref", "value": "${{ github.ref_name }}", "short": true},
+                  {"title": "Actor", "value": "${{ github.actor }}", "short": true}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

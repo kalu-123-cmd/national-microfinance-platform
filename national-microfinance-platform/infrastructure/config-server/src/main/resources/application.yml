@@ -1,0 +1,37 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  security:
+    user:
+      name: ${CONFIG_USER:configuser}
+      password: ${CONFIG_PASSWORD:configpass}
+  cloud:
+    config:
+      server:
+        git:
+          uri: ${CONFIG_GIT_URI:file://${user.home}/microfinance-config-repo}
+          default-label: main
+          search-paths: "{application}"
+          clone-on-start: true
+          force-pull: true
+        encrypt:
+          enabled: true
+
+encrypt:
+  key: ${CONFIG_ENCRYPT_KEY:change-this-key-in-production-32chars}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.cloud.config: INFO

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: microfinance
+  labels:
+    name: microfinance
+    app.kubernetes.io/part-of: national-microfinance-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: microfinance-monitoring
+  labels:
+    name: microfinance-monitoring

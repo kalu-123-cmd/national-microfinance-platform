@@ -1,0 +1,584 @@
+# ==============================================================================
+# ELK Stack — Elasticsearch + Logstash + Kibana + Filebeat
+# National Digital Microfinance Platform — Production
+# Namespace: microfinance-elk
+# ==============================================================================
+
+# ── Elasticsearch ConfigMap ────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+  namespace: microfinance-elk
+data:
+  elasticsearch.yml: |
+    cluster.name: microfinance-elk
+    network.host: 0.0.0.0
+    discovery.seed_hosts: ["elasticsearch-0", "elasticsearch-1", "elasticsearch-2"]
+    cluster.initial_master_nodes: ["elasticsearch-0", "elasticsearch-1", "elasticsearch-2"]
+    xpack.security.enabled: false
+    xpack.monitoring.collection.enabled: true
+    bootstrap.memory_lock: false
+    # Index lifecycle management
+    indices.lifecycle.poll_interval: 10m
+    # Performance tuning
+    thread_pool.write.queue_size: 1000
+    thread_pool.search.queue_size: 1000
+
+---
+# ── Elasticsearch StatefulSet (3-node cluster) ────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  namespace: microfinance-elk
+  labels:
+    app: elasticsearch
+    app.kubernetes.io/name: elasticsearch
+    app.kubernetes.io/component: elk
+spec:
+  serviceName: elasticsearch
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: elasticsearch
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.36
+          command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+        - name: increase-vm-max-map
+          image: busybox:1.36
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+        - name: increase-fd-ulimit
+          image: busybox:1.36
+          command: ["sh", "-c", "ulimit -n 65536"]
+          securityContext:
+            privileged: true
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+          ports:
+            - name: http
+              containerPort: 9200
+            - name: transport
+              containerPort: 9300
+          env:
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ES_JAVA_OPTS
+              value: "-Xms2g -Xmx2g -XX:+UseG1GC -XX:G1HeapRegionSize=16m"
+            - name: ELASTIC_USERNAME
+              value: "elastic"
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elk-secrets
+                  key: ELASTIC_PASSWORD
+          volumeMounts:
+            - name: elasticsearch-data
+              mountPath: /usr/share/elasticsearch/data
+            - name: elasticsearch-config
+              mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              subPath: elasticsearch.yml
+          resources:
+            requests:
+              memory: "3Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: 9200
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: 9200
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: elasticsearch-config
+          configMap:
+            name: elasticsearch-config
+  volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 100Gi
+        storageClassName: standard
+
+---
+# ── Elasticsearch Services ────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: microfinance-elk
+  labels:
+    app: elasticsearch
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+    - name: transport
+      port: 9300
+      targetPort: 9300
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-client
+  namespace: microfinance-elk
+  labels:
+    app: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+  type: ClusterIP
+
+---
+# ── Logstash ConfigMap (pipeline) ─────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-pipeline
+  namespace: microfinance-elk
+data:
+  logstash.conf: |
+    input {
+      beats {
+        port => 5044
+        codec => json_lines
+        ssl => false
+      }
+      tcp {
+        port => 5000
+        codec => json
+      }
+    }
+
+    filter {
+      # Enrich with Kubernetes metadata
+      if [kubernetes] {
+        mutate {
+          add_field => {
+            "k8s_namespace" => "%{[kubernetes][namespace]}"
+            "k8s_pod"       => "%{[kubernetes][pod][name]}"
+            "k8s_container" => "%{[kubernetes][container][name]}"
+            "k8s_node"      => "%{[kubernetes][node][name]}"
+          }
+        }
+      }
+
+      # Parse Spring Boot JSON structured log
+      if [message] =~ /^\{.*\}$/ {
+        json {
+          source => "message"
+          target => "parsed_log"
+          skip_on_invalid_json => true
+        }
+        if [parsed_log][level] {
+          mutate { add_field => { "log_level" => "%{[parsed_log][level]}" } }
+        }
+        if [parsed_log][logger_name] {
+          mutate { add_field => { "logger" => "%{[parsed_log][logger_name]}" } }
+        }
+        if [parsed_log][message] {
+          mutate { replace => { "message" => "%{[parsed_log][message]}" } }
+        }
+        if [parsed_log][stack_trace] {
+          mutate { add_field => { "stack_trace" => "%{[parsed_log][stack_trace]}" } }
+        }
+        if [parsed_log][trace_id] {
+          mutate { add_field => { "trace_id" => "%{[parsed_log][trace_id]}" } }
+        }
+        if [parsed_log][span_id] {
+          mutate { add_field => { "span_id" => "%{[parsed_log][span_id]}" } }
+        }
+      }
+
+      # Parse plain-text Spring Boot log format as fallback
+      if ![log_level] {
+        grok {
+          match => {
+            "message" => "%{TIMESTAMP_ISO8601:log_timestamp} +%{LOGLEVEL:log_level} +%{NUMBER:pid}? +--- +\[%{DATA:thread}\] +%{DATA:logger} +: +%{GREEDYDATA:log_message}"
+          }
+          overwrite => ["message"]
+          tag_on_failure => ["_grokparsefailure_springboot"]
+        }
+      }
+
+      # Multiline Java stack trace assembly (handled by filebeat, but add tag for clarity)
+      if [log_level] == "ERROR" or [log_level] == "FATAL" {
+        mutate {
+          add_tag => ["error", "needs-attention"]
+        }
+      }
+
+      # Parse timestamp
+      date {
+        match => ["log_timestamp", "ISO8601", "yyyy-MM-dd HH:mm:ss.SSS"]
+        target => "@timestamp"
+        remove_field => ["log_timestamp"]
+      }
+
+      # Geo-IP enrichment for API gateway logs
+      if [k8s_container] == "api-gateway" and [remote_addr] {
+        geoip {
+          source => "remote_addr"
+          target => "geoip"
+        }
+      }
+
+      # Fingerprint for deduplication
+      fingerprint {
+        source => ["message", "k8s_pod", "@timestamp"]
+        target => "[@metadata][fingerprint]"
+        method => "MURMUR3"
+        concatenate_sources => true
+      }
+
+      # Clean up intermediate fields
+      mutate {
+        remove_field => ["agent", "ecs", "host", "input", "parsed_log"]
+      }
+    }
+
+    output {
+      # Route to service-specific index
+      if [k8s_container] and [k8s_container] != "" {
+        elasticsearch {
+          hosts => ["elasticsearch-client:9200"]
+          index => "microfinance-%{k8s_container}-%{+YYYY.MM.dd}"
+          document_id => "%{[@metadata][fingerprint]}"
+          ilm_enabled => true
+          ilm_rollover_alias => "microfinance-app"
+          ilm_policy => "microfinance-app-policy"
+          manage_template => true
+          template_name => "microfinance-app"
+        }
+      } else {
+        elasticsearch {
+          hosts => ["elasticsearch-client:9200"]
+          index => "microfinance-app-%{+YYYY.MM.dd}"
+          ilm_enabled => true
+          ilm_rollover_alias => "microfinance-app"
+          ilm_policy => "microfinance-app-policy"
+          manage_template => true
+          template_name => "microfinance-app"
+        }
+      }
+
+      # Audit logs to dedicated index (7-year retention)
+      if [k8s_container] == "audit-service" {
+        elasticsearch {
+          hosts => ["elasticsearch-client:9200"]
+          index => "microfinance-audit-%{+YYYY.MM.dd}"
+          ilm_enabled => true
+          ilm_rollover_alias => "microfinance-audit"
+          ilm_policy => "microfinance-audit-policy"
+        }
+      }
+
+      # Fraud events to dedicated index
+      if [k8s_container] == "fraud-detection-service" or ("error" in [tags] and "fraud" in [tags]) {
+        elasticsearch {
+          hosts => ["elasticsearch-client:9200"]
+          index => "microfinance-fraud-%{+YYYY.MM.dd}"
+          ilm_enabled => true
+          ilm_rollover_alias => "microfinance-fraud"
+          ilm_policy => "microfinance-audit-policy"
+        }
+      }
+
+      # Slack notification for ERROR logs
+      if "error" in [tags] {
+        http {
+          url => "${SLACK_WEBHOOK_URL}"
+          http_method => "post"
+          format => "json"
+          mapping => {
+            "text" => "🔴 *Error in %{k8s_container}* (pod: %{k8s_pod})\n```%{message}```"
+          }
+        }
+      }
+    }
+
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    pipeline.workers: 4
+    pipeline.batch.size: 500
+    pipeline.batch.delay: 50
+    queue.type: persisted
+    queue.max_bytes: 1gb
+    dead_letter_queue.enable: true
+    monitoring.enabled: false
+
+---
+# ── Logstash Deployment ────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: microfinance-elk
+  labels:
+    app: logstash
+    app.kubernetes.io/component: elk
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:8.12.2
+          ports:
+            - name: beats
+              containerPort: 5044
+            - name: tcp
+              containerPort: 5000
+            - name: metrics
+              containerPort: 9600
+          env:
+            - name: LS_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: elk-secrets
+                  key: SLACK_WEBHOOK_URL
+          volumeMounts:
+            - name: pipeline-config
+              mountPath: /usr/share/logstash/pipeline
+            - name: logstash-config
+              mountPath: /usr/share/logstash/config/logstash.yml
+              subPath: logstash.yml
+          resources:
+            requests:
+              memory: "1.5Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9600
+            initialDelaySeconds: 60
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9600
+            initialDelaySeconds: 90
+            periodSeconds: 30
+      volumes:
+        - name: pipeline-config
+          configMap:
+            name: logstash-pipeline
+            items:
+              - key: logstash.conf
+                path: logstash.conf
+        - name: logstash-config
+          configMap:
+            name: logstash-pipeline
+            items:
+              - key: logstash.yml
+                path: logstash.yml
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: microfinance-elk
+  labels:
+    app: logstash
+spec:
+  selector:
+    app: logstash
+  ports:
+    - name: beats
+      port: 5044
+      targetPort: 5044
+    - name: tcp
+      port: 5000
+      targetPort: 5000
+    - name: metrics
+      port: 9600
+      targetPort: 9600
+
+---
+# ── Kibana Deployment ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: microfinance-elk
+  labels:
+    app: kibana
+    app.kubernetes.io/component: elk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:8.12.2
+          ports:
+            - name: http
+              containerPort: 5601
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: '["http://elasticsearch-client:9200"]'
+            - name: SERVER_NAME
+              value: "kibana.microfinance-elk"
+            - name: SERVER_PUBLICBASEURL
+              value: "https://logs.microfinance.et"
+            - name: XPACK_SECURITY_ENABLED
+              value: "false"
+            - name: XPACK_REPORTING_ENABLED
+              value: "false"
+            - name: TELEMETRY_ENABLED
+              value: "false"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            initialDelaySeconds: 90
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: microfinance-elk
+  labels:
+    app: kibana
+spec:
+  selector:
+    app: kibana
+  ports:
+    - name: http
+      port: 5601
+      targetPort: 5601
+
+---
+# ── ELK Ingress ────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: elk-ingress
+  namespace: microfinance-elk
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: kibana-basic-auth
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - logs.microfinance.et
+      secretName: kibana-tls
+  rules:
+    - host: logs.microfinance.et
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kibana
+                port:
+                  number: 5601
+
+---
+# ── ELK Secrets Placeholder ────────────────────────────────────────────────────
+apiVersion: v1
+kind: Secret
+metadata:
+  name: elk-secrets
+  namespace: microfinance-elk
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+stringData:
+  ELASTIC_PASSWORD: "CHANGE_ME_STRONG_ELASTIC_PASSWORD"
+  SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/CHANGE_ME"

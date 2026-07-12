@@ -1,0 +1,72 @@
+groups:
+  - name: microfinance-platform-alerts
+    rules:
+
+      # Service health
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 1 minute."
+
+      # High error rate
+      - alert: HighErrorRate
+        expr: rate(http_server_requests_seconds_count{status=~"5.."}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate > 10% for 2 minutes on {{ $labels.job }}"
+
+      # High latency
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency on {{ $labels.job }}"
+          description: "p95 latency > 2s for 5 minutes on {{ $labels.job }}"
+
+      # Fraud alert spike
+      - alert: FraudAlertSpike
+        expr: increase(fraud_alerts_total[5m]) > 50
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Fraud alert spike detected"
+          description: "More than 50 fraud alerts in 5 minutes"
+
+      # Low wallet balance (system wallet)
+      - alert: SystemWalletLowBalance
+        expr: wallet_system_balance < 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "System wallet balance low"
+          description: "System wallet balance below 100,000 ETB"
+
+      # DB connection pool exhaustion
+      - alert: DBConnectionPoolExhausted
+        expr: hikaricp_connections_active / hikaricp_connections_max > 0.9
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB connection pool nearly exhausted on {{ $labels.job }}"
+
+      # Kafka consumer lag
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_group_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group lag > 10000 messages"

@@ -1,0 +1,185 @@
+﻿[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] National Digital Microfinance Platform                             [pom]
+[INFO] Common Library                                                     [jar]
+[INFO] Security Library                                                   [jar]
+[INFO] Event Library                                                      [jar]
+[INFO] Authentication Service                                             [jar]
+[INFO] User Service                                                       [jar]
+[INFO] Identity KYC Service                                               [jar]
+[INFO] Wallet Service                                                     [jar]
+[INFO] Payment Service                                                    [jar]
+[INFO] Loan Service                                                       [jar]
+[INFO] Savings Service                                                    [jar]
+[INFO] Cooperative Service                                                [jar]
+[INFO] Agent Banking Service                                              [jar]
+[INFO] Notification Service                                               [jar]
+[INFO] Fraud Detection Service                                            [jar]
+[INFO] Credit Scoring Service                                             [jar]
+[INFO] AI Recommendation Service                                          [jar]
+[INFO] Financial Literacy Service                                         [jar]
+[INFO] Voice Banking Service                                              [jar]
+[INFO] Offline Sync Service                                               [jar]
+[INFO] Document Management Service                                        [jar]
+[INFO] Audit Service                                                      [jar]
+[INFO] Reporting Service                                                  [jar]
+[INFO] Analytics Service                                                  [jar]
+[INFO] Admin Service                                                      [jar]
+[INFO] 
+[INFO] ----------< com.microfinance:national-microfinance-platform >-----------
+[INFO] Building National Digital Microfinance Platform 1.0.0             [1/25]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ national-microfinance-platform ---
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\pom.xml to C:\Users\HP\.m2\repository\com\microfinance\national-microfinance-platform\1.0.0\national-microfinance-platform-1.0.0.pom
+[INFO] 
+[INFO] --------------------< com.microfinance:common-lib >---------------------
+[INFO] Building Common Library 1.0.0                                     [2/25]
+[INFO]   from shared\common-lib\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ common-lib ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\common-lib\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ common-lib ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ common-lib ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\common-lib\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ common-lib ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ common-lib ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ common-lib ---
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ common-lib ---
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\common-lib\pom.xml to C:\Users\HP\.m2\repository\com\microfinance\common-lib\1.0.0\common-lib-1.0.0.pom
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\common-lib\target\common-lib-1.0.0.jar to C:\Users\HP\.m2\repository\com\microfinance\common-lib\1.0.0\common-lib-1.0.0.jar
+[INFO] 
+[INFO] -------------------< com.microfinance:security-lib >--------------------
+[INFO] Building Security Library 1.0.0                                   [3/25]
+[INFO]   from shared\security-lib\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ security-lib ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\security-lib\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ security-lib ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ security-lib ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\security-lib\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ security-lib ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ security-lib ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ security-lib ---
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ security-lib ---
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\security-lib\pom.xml to C:\Users\HP\.m2\repository\com\microfinance\security-lib\1.0.0\security-lib-1.0.0.pom
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\security-lib\target\security-lib-1.0.0.jar to C:\Users\HP\.m2\repository\com\microfinance\security-lib\1.0.0\security-lib-1.0.0.jar
+[INFO] 
+[INFO] ---------------------< com.microfinance:event-lib >---------------------
+[INFO] Building Event Library 1.0.0                                      [4/25]
+[INFO]   from shared\event-lib\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ event-lib ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\event-lib\src\main\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ event-lib ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ event-lib ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\event-lib\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ event-lib ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ event-lib ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ event-lib ---
+[INFO] 
+[INFO] --- install:3.1.4:install (default-install) @ event-lib ---
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\event-lib\pom.xml to C:\Users\HP\.m2\repository\com\microfinance\event-lib\1.0.0\event-lib-1.0.0.pom
+[INFO] Installing C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\shared\event-lib\target\event-lib-1.0.0.jar to C:\Users\HP\.m2\repository\com\microfinance\event-lib\1.0.0\event-lib-1.0.0.jar
+[INFO] 
+[INFO] -------------------< com.microfinance:auth-service >--------------------
+[INFO] Building Authentication Service 1.0.0                             [5/25]
+[INFO]   from services\auth-service\pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ auth-service ---
+[INFO] Copying 2 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ auth-service ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 21 source files with javac [forked debug release 17] to target\classes
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ auth-service ---
+[INFO] skip non existing resourceDirectory C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\services\auth-service\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.13.0:testCompile (default-testCompile) @ auth-service ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ auth-service ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --- jar:3.5.0:jar (default-jar) @ auth-service ---
+[INFO] Building jar: C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\services\auth-service\target\auth-service-1.0.0.jar
+[INFO] 
+[INFO] --- spring-boot:3.2.5:repackage (default) @ auth-service ---
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for National Digital Microfinance Platform 1.0.0:
+[INFO] 
+[INFO] National Digital Microfinance Platform ............. SUCCESS [  0.177 s]
+[INFO] Common Library ..................................... SUCCESS [  1.740 s]
+[INFO] Security Library ................................... SUCCESS [  0.114 s]
+[INFO] Event Library ...................................... SUCCESS [  0.107 s]
+[INFO] Authentication Service ............................. FAILURE [  8.807 s]
+[INFO] User Service ....................................... SKIPPED
+[INFO] Identity KYC Service ............................... SKIPPED
+[INFO] Wallet Service ..................................... SKIPPED
+[INFO] Payment Service .................................... SKIPPED
+[INFO] Loan Service ....................................... SKIPPED
+[INFO] Savings Service .................................... SKIPPED
+[INFO] Cooperative Service ................................ SKIPPED
+[INFO] Agent Banking Service .............................. SKIPPED
+[INFO] Notification Service ............................... SKIPPED
+[INFO] Fraud Detection Service ............................ SKIPPED
+[INFO] Credit Scoring Service ............................. SKIPPED
+[INFO] AI Recommendation Service .......................... SKIPPED
+[INFO] Financial Literacy Service ......................... SKIPPED
+[INFO] Voice Banking Service .............................. SKIPPED
+[INFO] Offline Sync Service ............................... SKIPPED
+[INFO] Document Management Service ........................ SKIPPED
+[INFO] Audit Service ...................................... SKIPPED
+[INFO] Reporting Service .................................. SKIPPED
+[INFO] Analytics Service .................................. SKIPPED
+[INFO] Admin Service ...................................... SKIPPED
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  11.429 s
+[INFO] Finished at: 2026-07-05T21:06:52+03:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.springframework.boot:spring-boot-maven-plugin:3.2.5:repackage (default) on project auth-service: Execution default of goal org.springframework.boot:spring-boot-maven-plugin:3.2.5:repackage failed: Unable to rename 'C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\services\auth-service\target\auth-service-1.0.0.jar' to 'C:\Users\HP\Desktop\National Digital Microfinance Platform\national-microfinance-platform\services\auth-service\target\auth-service-1.0.0.jar.original' -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/PluginExecutionException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :auth-service

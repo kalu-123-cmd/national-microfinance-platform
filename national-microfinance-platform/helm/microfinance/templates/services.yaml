@@ -1,0 +1,58 @@
+{{/* Infrastructure */}}
+{{- include "microfinance.serviceDeployment" (dict "name" "config-server"   "port" 8888 "replicas" 1 "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "discovery-server" "port" 8761 "replicas" 1 "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "api-gateway"      "port" 8080 "replicas" 2 "Values" .Values "Release" .Release "Chart" .Chart) }}
+
+{{/* Core services */}}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "auth-service"         "port" 8081 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "user-service"         "port" 8082 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "identity-kyc-service" "port" 8083 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "wallet-service"       "port" 8084 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+
+{{/* Financial core */}}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "payment-service"      "port" 8085 "replicas" 3 "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "loan-service"         "port" 8086 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "savings-service"      "port" 8087 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "cooperative-service"  "port" 8088 "replicas" .Values.replicaCount.core "Values" .Values "Release" .Release "Chart" .Chart) }}
+
+{{/* Support services */}}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "agent-banking-service"     "port" 8089 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "notification-service"      "port" 8090 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "fraud-detection-service"   "port" 8091 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "credit-scoring-service"    "port" 8092 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "ai-recommendation-service" "port" 8093 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+
+{{/* Analytics */}}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "audit-service"     "port" 8094 "replicas" .Values.replicaCount.analytics "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "reporting-service" "port" 8095 "replicas" .Values.replicaCount.analytics "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "analytics-service" "port" 8096 "replicas" .Values.replicaCount.analytics "Values" .Values "Release" .Release "Chart" .Chart) }}
+
+{{/* Specialized */}}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "offline-sync-service"         "port" 8097 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "financial-literacy-service"   "port" 8098 "replicas" 1 "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "voice-banking-service"        "port" 8099 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "document-management-service"  "port" 8100 "replicas" .Values.replicaCount.support "Values" .Values "Release" .Release "Chart" .Chart) }}
+---
+{{- include "microfinance.serviceDeployment" (dict "name" "admin-service" "port" 8101 "replicas" 1 "Values" .Values "Release" .Release "Chart" .Chart) }}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microfinance-config
+  namespace: microfinance
+data:
+  EUREKA_HOST: "discovery-server"
+  EUREKA_PORT: "8761"
+  KAFKA_BOOTSTRAP: "kafka:9092"
+  REDIS_HOST: "redis"
+  MONGODB_HOST: "mongodb"
+  DEFAULT_CURRENCY: "ETB"
+  DEFAULT_TIMEZONE: "Africa/Addis_Ababa"
+  DEFAULT_LANGUAGE: "am"
+  SPRING_PROFILES_ACTIVE: "kubernetes"

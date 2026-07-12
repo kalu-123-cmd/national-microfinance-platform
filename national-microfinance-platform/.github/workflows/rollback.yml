@@ -1,0 +1,137 @@
+name: Rollback Production
+
+# ==============================================================================
+# Manual rollback to a previous Helm release revision
+# Trigger: workflow_dispatch with revision number or "previous"
+# ==============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Helm revision to rollback to (integer, or "previous" for one step back)'
+        required: true
+        default: 'previous'
+      reason:
+        description: 'Reason for rollback (for audit trail)'
+        required: true
+        default: 'Manual rollback'
+
+env:
+  NAMESPACE: microfinance
+  HELM_RELEASE: microfinance
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  rollback:
+    name: 🔄 Rollback Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.microfinance.et
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: v1.29.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.14.0
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.PROD_KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Show current release history
+        run: |
+          echo "=== Current Helm History ==="
+          helm history ${{ env.HELM_RELEASE }} -n ${{ env.NAMESPACE }} --max 10
+
+      - name: Show current image tags
+        run: |
+          echo "=== Current Running Images ==="
+          kubectl get pods -n ${{ env.NAMESPACE }} \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}' \
+            | head -20
+
+      - name: Execute rollback
+        run: |
+          REASON="${{ github.event.inputs.reason }}"
+          ACTOR="${{ github.actor }}"
+          REVISION="${{ github.event.inputs.revision }}"
+
+          echo "🔄 Initiating rollback by ${ACTOR}: ${REASON}"
+
+          if [ "${REVISION}" = "previous" ]; then
+            echo "Rolling back to previous revision..."
+            helm rollback ${{ env.HELM_RELEASE }} \
+              -n ${{ env.NAMESPACE }} \
+              --wait \
+              --timeout 15m
+          else
+            echo "Rolling back to revision ${REVISION}..."
+            helm rollback ${{ env.HELM_RELEASE }} "${REVISION}" \
+              -n ${{ env.NAMESPACE }} \
+              --wait \
+              --timeout 15m
+          fi
+
+      - name: Verify rollback success
+        run: |
+          echo "⏳ Verifying critical services after rollback..."
+          for svc in auth-service payment-service wallet-service; do
+            kubectl rollout status deployment/$svc \
+              -n ${{ env.NAMESPACE }} \
+              --timeout=5m
+          done
+          echo "✅ Rollback verified"
+
+      - name: Run smoke tests post-rollback
+        run: |
+          sleep 15
+          curl -sf https://api.microfinance.et/actuator/health || {
+            echo "❌ Smoke test failed after rollback!"
+            exit 1
+          }
+          echo "✅ Smoke tests passed after rollback"
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} *Production Rollback ${{ job.status }}*",
+              "attachments": [{
+                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
+                "fields": [
+                  {"title": "Revision", "value": "${{ github.event.inputs.revision }}", "short": true},
+                  {"title": "Initiated by", "value": "${{ github.actor }}", "short": true},
+                  {"title": "Reason", "value": "${{ github.event.inputs.reason }}", "short": false}
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Post summary
+        if: always()
+        run: |
+          echo "## 🔄 Rollback Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Revision** | ${{ github.event.inputs.revision }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Reason** | ${{ github.event.inputs.reason }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Actor** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Status** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,105 @@
+filebeat.autodiscover:
+  providers:
+    - type: kubernetes
+      node: ${NODE_NAME}
+      hints.enabled: true
+      hints.default_config:
+        type: container
+        paths:
+          - /var/log/containers/*${data.kubernetes.container.id}.log
+        # Java multiline — aggregate stack traces into single event
+        multiline:
+          type: pattern
+          pattern: '^[[:space:]]+(at|\.{3})\b|^Caused by:'
+          negate: false
+          match: after
+          max_lines: 500
+          timeout: 5s
+      # Only autodiscover microfinance namespace pods
+      templates:
+        - condition:
+            equals:
+              kubernetes.namespace: microfinance
+          config:
+            - type: container
+              paths:
+                - /var/log/containers/*${data.kubernetes.container.id}.log
+              multiline:
+                type: pattern
+                pattern: '^[[:space:]]|^Caused by:|^Exception in thread'
+                negate: false
+                match: after
+                max_lines: 500
+                timeout: 5s
+
+processors:
+  # Kubernetes metadata enrichment
+  - add_kubernetes_metadata:
+      host: ${NODE_NAME}
+      matchers:
+        - logs_path:
+            logs_path: "/var/log/containers/"
+
+  # Cloud provider metadata
+  - add_cloud_metadata: ~
+
+  # Host info
+  - add_host_metadata: ~
+
+  # Docker container metadata
+  - add_docker_metadata: ~
+
+  # Drop noisy health-check logs
+  - drop_event:
+      when:
+        regexp:
+          message: '(GET /actuator/health|GET /-/healthy|kube-probe)'
+
+  # Drop logs from non-microfinance namespaces
+  - drop_event:
+      when:
+        not:
+          or:
+            - equals:
+                kubernetes.namespace: microfinance
+            - equals:
+                kubernetes.namespace: microfinance-monitoring
+            - equals:
+                kubernetes.namespace: microfinance-elk
+
+  # Add environment fields
+  - add_fields:
+      target: ''
+      fields:
+        environment: production
+        platform: microfinance-et
+        region: addis-ababa
+        datacenter: primary
+
+output.logstash:
+  hosts: ["logstash.microfinance-elk:5044"]
+  bulk_max_size: 2048
+  worker: 4
+  loadbalance: true
+  timeout: 30s
+  pipelining: 10
+  compression_level: 3
+
+# In-memory queue to buffer events
+queue.mem:
+  events: 4096
+  flush.min_events: 512
+  flush.timeout: 5s
+
+# Internal metrics endpoint
+http.enabled: true
+http.host: 0.0.0.0
+http.port: 5066
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

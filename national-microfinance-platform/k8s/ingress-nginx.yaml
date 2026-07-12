@@ -1,0 +1,238 @@
+# ==============================================================================
+# Production NGINX Ingress — TLS, Rate Limiting, Security Headers
+# National Digital Microfinance Platform
+# ==============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: microfinance-ingress
+  namespace: microfinance
+  annotations:
+    # NGINX Ingress Controller
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+
+    # Rate limiting — 100 req/s per IP, burst 200
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-rpm: "6000"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+
+    # Proxy settings
+    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "15"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+      add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" always;
+      more_clear_headers "Server";
+      more_clear_headers "X-Powered-By";
+
+    # CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.microfinance.et,https://admin.microfinance.et"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Request-ID, X-Correlation-ID"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+
+    # TLS certificate (cert-manager)
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+
+    # Modsecurity WAF (if modsecurity module installed)
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/modsecurity-transaction-id: "$request_id"
+    nginx.ingress.kubernetes.io/modsecurity-snippet: |
+      SecRuleEngine On
+      SecRequestBodyAccess On
+      SecRule REQUEST_HEADERS:Content-Type "text/xml" "id:'200000',phase:1,t:none,t:lowercase,pass,nolog,ctl:requestBodyProcessor=XML"
+
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.microfinance.et
+        - admin.microfinance.et
+      secretName: microfinance-tls
+  rules:
+    - host: api.microfinance.et
+      http:
+        paths:
+          - path: /api/v1/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-service
+                port:
+                  number: 8081
+          - path: /api/v1/users
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port:
+                  number: 8082
+          - path: /api/v1/kyc
+            pathType: Prefix
+            backend:
+              service:
+                name: identity-kyc-service
+                port:
+                  number: 8083
+          - path: /api/v1/wallets
+            pathType: Prefix
+            backend:
+              service:
+                name: wallet-service
+                port:
+                  number: 8084
+          - path: /api/v1/payments
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-service
+                port:
+                  number: 8085
+          - path: /api/v1/loans
+            pathType: Prefix
+            backend:
+              service:
+                name: loan-service
+                port:
+                  number: 8086
+          - path: /api/v1/savings
+            pathType: Prefix
+            backend:
+              service:
+                name: savings-service
+                port:
+                  number: 8087
+          - path: /api/v1/cooperatives
+            pathType: Prefix
+            backend:
+              service:
+                name: cooperative-service
+                port:
+                  number: 8088
+          - path: /api/v1/agents
+            pathType: Prefix
+            backend:
+              service:
+                name: agent-banking-service
+                port:
+                  number: 8089
+          - path: /api/v1/notifications
+            pathType: Prefix
+            backend:
+              service:
+                name: notification-service
+                port:
+                  number: 8090
+          - path: /api/v1/credit
+            pathType: Prefix
+            backend:
+              service:
+                name: credit-scoring-service
+                port:
+                  number: 8092
+          - path: /api/v1/documents
+            pathType: Prefix
+            backend:
+              service:
+                name: document-management-service
+                port:
+                  number: 8097
+          - path: /api/v1/recommendations
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-recommendation-service
+                port:
+                  number: 8095
+          - path: /api/v1/voice
+            pathType: Prefix
+            backend:
+              service:
+                name: voice-banking-service
+                port:
+                  number: 8099
+          - path: /api/v1/literacy
+            pathType: Prefix
+            backend:
+              service:
+                name: financial-literacy-service
+                port:
+                  number: 8098
+
+    - host: admin.microfinance.et
+      http:
+        paths:
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: admin-service
+                port:
+                  number: 8101
+          - path: /reporting
+            pathType: Prefix
+            backend:
+              service:
+                name: reporting-service
+                port:
+                  number: 8093
+          - path: /analytics
+            pathType: Prefix
+            backend:
+              service:
+                name: analytics-service
+                port:
+                  number: 8096
+          - path: /audit
+            pathType: Prefix
+            backend:
+              service:
+                name: audit-service
+                port:
+                  number: 8094
+
+---
+# ── Special high-rate ingress for payments (dedicated rate limits) ─────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: microfinance-payments-ingress
+  namespace: microfinance
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "500"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    cert-manager.io/cluster-issuer: "letsencrypt-production"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - payments.microfinance.et
+      secretName: microfinance-payments-tls
+  rules:
+    - host: payments.microfinance.et
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-service
+                port:
+                  number: 8085

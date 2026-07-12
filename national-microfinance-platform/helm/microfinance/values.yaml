@@ -1,0 +1,105 @@
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets: []
+  storageClass: standard
+
+replicaCount:
+  infrastructure: 1
+  core: 2
+  support: 2
+  analytics: 2
+
+image:
+  registry: ghcr.io/your-org
+  tag: 1.0.0
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: api.microfinance.et
+      paths:
+        - path: /
+          pathType: Prefix
+          serviceName: api-gateway
+          servicePort: 8080
+  tls:
+    - secretName: microfinance-tls
+      hosts:
+        - api.microfinance.et
+
+resources:
+  infrastructure:
+    requests: { memory: "256Mi", cpu: "100m" }
+    limits:   { memory: "512Mi", cpu: "500m" }
+  core:
+    requests: { memory: "256Mi", cpu: "100m" }
+    limits:   { memory: "512Mi", cpu: "500m" }
+  financial:
+    requests: { memory: "256Mi", cpu: "200m" }
+    limits:   { memory: "512Mi", cpu: "1000m" }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: CHANGEME
+    database: microfinance
+  primary:
+    persistence:
+      size: 50Gi
+
+redis:
+  enabled: true
+  auth:
+    password: CHANGEME
+  master:
+    persistence:
+      size: 10Gi
+
+kafka:
+  enabled: true
+  persistence:
+    size: 20Gi
+  zookeeper:
+    persistence:
+      size: 10Gi
+
+mongodb:
+  enabled: true
+  auth:
+    rootPassword: CHANGEME
+  persistence:
+    size: 20Gi
+
+monitoring:
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+    adminPassword: CHANGEME
+
+secrets:
+  dbPassword: CHANGEME_BASE64
+  jwtSecret: CHANGEME_BASE64_MIN_32_CHARS
+  redisPassword: CHANGEME_BASE64
+
+configServer:
+  git:
+    uri: https://github.com/your-org/config-repo
+    defaultLabel: main
+
+eureka:
+  replicas: 2

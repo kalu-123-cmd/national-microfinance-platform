@@ -1,0 +1,256 @@
+# =============================================================================
+# All remaining microservice deployments + services
+# user, kyc, payment, loan, savings, cooperative, agent-banking,
+# notification, fraud, credit, ai, audit, reporting, analytics,
+# offline-sync, literacy, voice, document, admin
+# =============================================================================
+
+# ---- user-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: microfinance
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: user-service }
+  template:
+    metadata:
+      labels: { app: user-service }
+    spec:
+      containers:
+        - name: user-service
+          image: ${DOCKER_REGISTRY}/user-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8082 }]
+          env:
+            - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres-user:5432/user_db" }
+            - { name: SPRING_DATASOURCE_USERNAME, value: postgres }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: DB_PASSWORD } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: JWT_SECRET } }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits: { memory: 512Mi, cpu: 500m }
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: 8082 }
+            initialDelaySeconds: 30
+          livenessProbe:
+            httpGet: { path: /actuator/health, port: 8082 }
+            initialDelaySeconds: 60
+---
+apiVersion: v1
+kind: Service
+metadata: { name: user-service, namespace: microfinance }
+spec:
+  selector: { app: user-service }
+  ports: [{ port: 8082, targetPort: 8082 }]
+---
+# ---- identity-kyc-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-kyc-service
+  namespace: microfinance
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: identity-kyc-service }
+  template:
+    metadata:
+      labels: { app: identity-kyc-service }
+    spec:
+      containers:
+        - name: identity-kyc-service
+          image: ${DOCKER_REGISTRY}/identity-kyc-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8083 }]
+          env:
+            - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres-kyc:5432/kyc_db" }
+            - { name: SPRING_DATASOURCE_USERNAME, value: postgres }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: DB_PASSWORD } }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits: { memory: 512Mi, cpu: 500m }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: identity-kyc-service, namespace: microfinance }
+spec:
+  selector: { app: identity-kyc-service }
+  ports: [{ port: 8083, targetPort: 8083 }]
+---
+# ---- payment-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: microfinance
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: payment-service }
+  template:
+    metadata:
+      labels: { app: payment-service }
+    spec:
+      containers:
+        - name: payment-service
+          image: ${DOCKER_REGISTRY}/payment-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8085 }]
+          env:
+            - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres-payment:5432/payment_db" }
+            - { name: SPRING_DATASOURCE_USERNAME, value: postgres }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: DB_PASSWORD } }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits: { memory: 512Mi, cpu: 500m }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: payment-service, namespace: microfinance }
+spec:
+  selector: { app: payment-service }
+  ports: [{ port: 8085, targetPort: 8085 }]
+---
+# ---- loan-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loan-service
+  namespace: microfinance
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: loan-service }
+  template:
+    metadata:
+      labels: { app: loan-service }
+    spec:
+      containers:
+        - name: loan-service
+          image: ${DOCKER_REGISTRY}/loan-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8086 }]
+          env:
+            - { name: SPRING_DATASOURCE_URL, value: "jdbc:postgresql://postgres-loan:5432/loan_db" }
+            - { name: SPRING_DATASOURCE_USERNAME, value: postgres }
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: DB_PASSWORD } }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 256Mi, cpu: 200m }
+            limits: { memory: 512Mi, cpu: 500m }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: loan-service, namespace: microfinance }
+spec:
+  selector: { app: loan-service }
+  ports: [{ port: 8086, targetPort: 8086 }]
+---
+# ---- notification-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: microfinance
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: notification-service }
+  template:
+    metadata:
+      labels: { app: notification-service }
+    spec:
+      containers:
+        - name: notification-service
+          image: ${DOCKER_REGISTRY}/notification-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8090 }]
+          env:
+            - name: SPRING_DATA_MONGODB_URI
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: MONGO_URI } }
+            - { name: SPRING_KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 256Mi, cpu: 150m }
+            limits: { memory: 512Mi, cpu: 400m }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: notification-service, namespace: microfinance }
+spec:
+  selector: { app: notification-service }
+  ports: [{ port: 8090, targetPort: 8090 }]
+---
+# ---- fraud-detection-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-detection-service
+  namespace: microfinance
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: fraud-detection-service }
+  template:
+    metadata:
+      labels: { app: fraud-detection-service }
+    spec:
+      containers:
+        - name: fraud-detection-service
+          image: ${DOCKER_REGISTRY}/fraud-detection-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8091 }]
+          env:
+            - name: SPRING_DATA_MONGODB_URI
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: MONGO_URI } }
+            - { name: SPRING_KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 512Mi, cpu: 300m }
+            limits: { memory: 1Gi, cpu: 600m }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: fraud-detection-service, namespace: microfinance }
+spec:
+  selector: { app: fraud-detection-service }
+  ports: [{ port: 8091, targetPort: 8091 }]
+---
+# ---- audit-service ----
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audit-service
+  namespace: microfinance
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: audit-service }
+  template:
+    metadata:
+      labels: { app: audit-service }
+    spec:
+      containers:
+        - name: audit-service
+          image: ${DOCKER_REGISTRY}/audit-service:${IMAGE_TAG:-latest}
+          ports: [{ containerPort: 8094 }]
+          env:
+            - name: SPRING_DATA_MONGODB_URI
+              valueFrom: { secretKeyRef: { name: microfinance-secrets, key: MONGO_URI } }
+            - { name: SPRING_KAFKA_BOOTSTRAP_SERVERS, value: "kafka:9092" }
+            - { name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE, value: "http://discovery-server:8761/eureka/" }
+          resources:
+            requests: { memory: 256Mi, cpu: 150m }
+            limits: { memory: 512Mi, cpu: 350m }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: audit-service, namespace: microfinance }
+spec:
+  selector: { app: audit-service }
+  ports: [{ port: 8094, targetPort: 8094 }]

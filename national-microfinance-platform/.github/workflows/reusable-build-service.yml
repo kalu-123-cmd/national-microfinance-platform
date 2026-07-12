@@ -1,0 +1,141 @@
+name: Reusable — Build & Push Service
+
+# ============================================================
+# Called by: ci.yml, cd-staging.yml, cd-production.yml
+# Builds one microservice, runs tests, optionally pushes image
+# ============================================================
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: 'Service name (e.g. auth-service)'
+        required: true
+        type: string
+      service_path:
+        description: 'Path prefix: services or infrastructure'
+        required: false
+        type: string
+        default: 'services'
+      push_image:
+        description: 'Whether to push Docker image to registry'
+        required: false
+        type: boolean
+        default: false
+      image_tag:
+        description: 'Docker image tag override'
+        required: false
+        type: string
+        default: ''
+      run_tests:
+        description: 'Whether to run unit tests'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      image_digest:
+        description: 'Pushed image digest'
+        value: ${{ jobs.build.outputs.image_digest }}
+      image_tag:
+        description: 'Full image tag used'
+        value: ${{ jobs.build.outputs.image_tag }}
+    secrets:
+      GITHUB_TOKEN:
+        required: false
+
+env:
+  REGISTRY: ghcr.io
+  JAVA_VERSION: '21'
+
+jobs:
+  build:
+    name: Build ${{ inputs.service }}
+    runs-on: ubuntu-latest
+    outputs:
+      image_digest: ${{ steps.push.outputs.digest }}
+      image_tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Java + Maven ─────────────────────────────────────────────────────────
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      # ── Restore shared lib cache ─────────────────────────────────────────────
+      - name: Restore Maven cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
+
+      # ── Compile + test ───────────────────────────────────────────────────────
+      - name: Build ${{ inputs.service }}
+        working-directory: national-microfinance-platform
+        run: |
+          mvn clean ${{ inputs.run_tests && 'verify' || 'compile' }} \
+            -pl ${{ inputs.service_path }}/${{ inputs.service }} \
+            -am \
+            -DskipTests=${{ !inputs.run_tests }} \
+            -T 2C \
+            -q
+
+      # ── Test results ─────────────────────────────────────────────────────────
+      - name: Publish test results
+        if: inputs.run_tests && always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests — ${{ inputs.service }}
+          path: 'national-microfinance-platform/${{ inputs.service_path }}/${{ inputs.service }}/target/surefire-reports/*.xml'
+          reporter: java-junit
+          fail-on-error: false
+
+      # ── Docker ───────────────────────────────────────────────────────────────
+      - name: Set up Docker Buildx
+        if: inputs.push_image
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: inputs.push_image
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        if: inputs.push_image
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/microfinance-${{ inputs.service }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=${{ inputs.image_tag }},enable=${{ inputs.image_tag != '' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        if: inputs.push_image
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: national-microfinance-platform
+          file: national-microfinance-platform/${{ inputs.service_path }}/${{ inputs.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.service }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.service }}
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ github.ref_name }}

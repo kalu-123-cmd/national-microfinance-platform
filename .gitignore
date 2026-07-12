@@ -1,0 +1,44 @@
+# ── Maven build output ────────────────────────────────────────
+**/target/
+!**/target/generated-sources/
+*.jar
+*.war
+*.ear
+*.class
+
+# ── Maven wrapper ─────────────────────────────────────────────
+.mvn/wrapper/maven-wrapper.jar
+
+# ── Node / Frontend ───────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+.npm/
+
+# ── Environment / Secrets ─────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.secret
+
+# ── IDE ───────────────────────────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+
+# ── Docker volumes ────────────────────────────────────────────
+docker/data/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+desktop.ini

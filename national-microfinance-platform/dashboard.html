@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>National Digital Microfinance Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #9f86c0;
+            --primary-glow: rgba(159, 134, 192, 0.5);
+            --secondary: #5e548e;
+            --success: #10b981;
+            --error: #ef4444;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(-45deg, #0b0914, #1c1535, #35255c, #5e548e);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Glassmorphism Container */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+
+        .dashboard-panel {
+            max-width: 900px;
+            display: none; /* Hidden by default */
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(to right, #fff, var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            margin-bottom: 30px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            padding: 5px;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 12px;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            background: var(--secondary);
+            color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        /* Forms */
+        .form-section {
+            display: none;
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.8);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: white;
+            font-size: 15px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px var(--primary-glow);
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .input-group input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px -10px var(--primary);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px -10px var(--primary);
+            filter: brightness(1.1);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+
+        .toast {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border-left: 4px solid var(--primary);
+            padding: 16px 24px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideInRight 0.3s ease forwards;
+        }
+
+        .toast.success { border-left-color: var(--success); }
+        .toast.error { border-left-color: var(--error); }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Dashboard Styles */
+        .grid-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .dash-card {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 24px;
+            transition: transform 0.3s ease;
+        }
+
+        .dash-card:hover {
+            transform: translateY(-5px);
+            background: rgba(0,0,0,0.3);
+        }
+
+        .dash-card h3 {
+            font-size: 16px;
+            color: var(--primary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .jwt-box {
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #a8b2d1;
+            word-break: break-all;
+            max-height: 100px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            box-shadow: none;
+            margin-top: 20px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.4);
+            box-shadow: 0 10px 20px -10px rgba(239, 68, 68, 0.5);
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .service-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .service-status::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 10px #10b981;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="toast-container"></div>
+
+    <!-- Auth Container -->
+    <div class="glass-panel" id="auth-panel">
+        <div class="header">
+            <h1>Microfinance 🇪🇹</h1>
+            <p>Secure Core Banking Platform</p>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('login')">Login</div>
+            <div class="tab" onclick="switchTab('register')">Register</div>
+        </div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="form-section active" onsubmit="handleLogin(event)">
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="login-username" placeholder="Enter username" required>
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="login-password" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="btn" id="login-btn">
+                <span class="loading-spinner" id="login-spinner"></span>
+                Secure Login
+            </button>
+        </form>
+
+        <!-- Register Form -->
+        <form id="register-form" class="form-section" onsubmit="handleRegister(event)">
+            <div class="input-group">
+                <label>Username</label>
+                <input type="text" id="reg-username" placeholder="Choose username" required>
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="reg-password" placeholder="Create password" required>
+            </div>
+            <div class="input-group">
+                <label>PIN (4 Digits)</label>
+                <input type="password" id="reg-pin" placeholder="••••" pattern="[0-9]{4}" maxlength="4" required>
+            </div>
+            <div class="input-group">
+                <label>National ID</label>
+                <input type="text" id="reg-id" placeholder="ET-123456789" required>
+            </div>
+            <div class="input-group">
+                <label>Phone Number</label>
+                <input type="tel" id="reg-phone" placeholder="+251..." required>
+            </div>
+            <button type="submit" class="btn" id="reg-btn">
+                <span class="loading-spinner" id="reg-spinner"></span>
+                Create Account
+            </button>
+        </form>
+    </div>
+
+    <!-- Dashboard Container -->
+    <div class="glass-panel dashboard-panel" id="dashboard-panel">
+        <div class="header">
+            <h1>Welcome to the Platform</h1>
+            <p id="user-greeting">Connected to API Gateway</p>
+            <div style="margin-top: 15px;">
+                <span class="service-status">Backend Connected (Port 8080)</span>
+            </div>
+        </div>
+
+        <div class="grid-cards">
+            <div class="dash-card">
+                <h3>🔐 Security Token (JWT)</h3>
+                <p style="font-size: 13px; color: #a8b2d1;">Your authenticated session token returned from the Auth Service. Used to access protected APIs.</p>
+                <div class="jwt-box" id="jwt-display"></div>
+            </div>
+
+            <div class="dash-card">
+                <h3>🏦 Core Services Status</h3>
+                <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                        <span>Wallet Service</span> <span style="color:#34d399">Online</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                        <span>Payment Service</span> <span style="color:#34d399">Online</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                        <span>Loan Service</span> <span style="color:#34d399">Online</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 14px;">
+                        <span>PostgreSQL Auth DB</span> <span style="color:#34d399">Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn logout-btn" onclick="logout()">Secure Logout</button>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8080/api/v1/auth";
+        let accessToken = null;
+
+        // UI Helpers
+        function showToast(message, type = "success") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icon = type === 'success' ? '✅' : '❌';
+            toast.innerHTML = `<span>${icon}</span> <div><strong>${type.toUpperCase()}</strong><br><span style="font-size:14px; opacity:0.9">${message}</span></div>`;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.form-section').forEach(f => f.classList.remove('active'));
+            
+            if(tab === 'login') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('login-form').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('register-form').classList.add('active');
+            }
+        }
+
+        function toggleLoading(btnId, spinnerId, isLoading) {
+            const btn = document.getElementById(btnId);
+            const spinner = document.getElementById(spinnerId);
+            btn.disabled = isLoading;
+            spinner.style.display = isLoading ? 'inline-block' : 'none';
+        }
+
+        function showDashboard(username, token) {
+            document.getElementById('auth-panel').style.display = 'none';
+            document.getElementById('dashboard-panel').style.display = 'block';
+            document.getElementById('user-greeting').innerText = `Logged in as @${username}`;
+            document.getElementById('jwt-display').innerText = token;
+        }
+
+        function logout() {
+            accessToken = null;
+            document.getElementById('dashboard-panel').style.display = 'none';
+            document.getElementById('auth-panel').style.display = 'block';
+            document.getElementById('login-form').reset();
+            showToast("Successfully logged out");
+        }
+
+        // API Integration
+        async function handleRegister(e) {
+            e.preventDefault();
+            toggleLoading('reg-btn', 'reg-spinner', true);
+
+            const payload = {
+                username: document.getElementById('reg-username').value,
+                password: document.getElementById('reg-password').value,
+                pin: document.getElementById('reg-pin').value,
+                nationalId: document.getElementById('reg-id').value,
+                phoneNumber: document.getElementById('reg-phone').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showToast(data.message || "Account successfully created! Please login.");
+                    document.getElementById('register-form').reset();
+                    switchTab('login');
+                    document.getElementById('login-username').value = payload.username;
+                } else {
+                    showToast(data.message || "Registration failed", "error");
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Cannot connect to backend. Is Docker and the Platform running?", "error");
+            } finally {
+                toggleLoading('reg-btn', 'reg-spinner', false);
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            toggleLoading('login-btn', 'login-spinner', true);
+
+            const payload = {
+                username: document.getElementById('login-username').value,
+                password: document.getElementById('login-password').value
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    accessToken = data.data.accessToken;
+                    showToast("Login Successful!");
+                    showDashboard(payload.username, accessToken);
+                } else {
+                    showToast(data.message || "Invalid credentials", "error");
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("Cannot connect to backend. Is Docker and the Platform running?", "error");
+            } finally {
+                toggleLoading('login-btn', 'login-spinner', false);
+            }
+        }
+    </script>
+</body>
+</html>
