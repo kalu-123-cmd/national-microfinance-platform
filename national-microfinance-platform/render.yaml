@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: microfinance-auth
+    runtime: java
+    rootDir: national-microfinance-platform
+    buildCommand: mvn clean package -pl services/auth-service -am -DskipTests -q
+    startCommand: java -Xmx512m -XX:+UseContainerSupport -Djava.security.egd=file:/dev/./urandom -jar services/auth-service/target/auth-service-1.0.0.jar
+    plan: free
+    healthCheckPath: /api/v1/auth/health
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: microfinance-postgres
+          property: connectionString
+      - key: DB_USER
+        fromDatabase:
+          name: microfinance-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: microfinance-postgres
+          property: password
+      - key: EUREKA_CLIENT_ENABLED
+        value: "false"
+      - key: SPRING_CLOUD_CONFIG_ENABLED
+        value: "false"
+      - key: SPRING_FLYWAY_ENABLED
+        value: "true"
+      - key: SPRING_FLYWAY_BASELINE_ON_MIGRATE
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SERVER_PORT
+        value: "8081"
+
+databases:
+  - name: microfinance-postgres
+    plan: free
+    databaseName: auth_db
+    user: postgres
