@@ -1,0 +1,1 @@
+web: java -Xmx512m -XX:+UseContainerSupport -Djava.security.egd=file:/dev/./urandom -jar services/auth-service/target/auth-service-1.0.0.jar

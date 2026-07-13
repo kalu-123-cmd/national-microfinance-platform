@@ -1,0 +1,10 @@
+[phases.setup]
+nixPkgs = ["jdk21", "maven"]
+
+[phases.build]
+cmds = [
+  "mvn clean package -pl services/auth-service -am -DskipTests -q"
+]
+
+[start]
+cmd = "java -Xmx512m -XX:+UseContainerSupport -Djava.security.egd=file:/dev/./urandom -jar services/auth-service/target/auth-service-1.0.0.jar"
