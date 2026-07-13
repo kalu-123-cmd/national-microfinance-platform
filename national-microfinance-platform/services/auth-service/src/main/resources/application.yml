@@ -6,109 +6,65 @@ spring:
     import: optional:configserver:http://localhost:8888
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/auth_db
-    username: postgres
-    password: postgres
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/auth_db}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
+      maximum-pool-size: 5
+      minimum-idle: 1
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
 
   jpa:
     hibernate:
-      # Flyway manages the schema — let it create/migrate, JPA should not touch DDL
       ddl-auto: none
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-        jdbc:
-          batch_size: 20
-        order_inserts: true
-        order_updates: true
 
   flyway:
-    enabled: true
-    baseline-on-migrate: true
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    baseline-on-migrate: ${SPRING_FLYWAY_BASELINE_ON_MIGRATE:true}
     locations: classpath:db/migration
 
   data:
     redis:
-      host: localhost
-      port: 6379
-      # password:   # leave blank if Redis has no password locally
-      timeout: 2000ms
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 2
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+      password: ${SPRING_REDIS_PASSWORD:}
 
-  kafka:
-    bootstrap-servers: localhost:9092
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      properties:
-        spring.json.add.type.headers: false
+  cloud:
+    config:
+      enabled: ${SPRING_CLOUD_CONFIG_ENABLED:false}
 
 server:
-  port: 8081
+  port: ${PORT:10000}
 
 eureka:
   client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-    fetch-registry: true
-    register-with-eureka: true
-  instance:
-    prefer-ip-address: false
-    hostname: localhost
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
+    enabled: ${EUREKA_CLIENT_ENABLED:false}
+    register-with-eureka: false
+    fetch-registry: false
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus,metrics
+        include: health,info
   endpoint:
     health:
       show-details: always
-  metrics:
-    export:
-      prometheus:
-        enabled: true
-  tracing:
-    sampling:
-      probability: 1.0
 
-# ── JWT ──────────────────────────────────────────────────────────────────────
-# Property names must match JwtTokenProvider @Value annotations exactly:
-#   @Value("${jwt.secret}")
-#   @Value("${jwt.access-token-expiry-ms:900000}")
-#   @Value("${jwt.refresh-token-expiry-ms:604800000}")
 jwt:
-  secret: ${JWT_SECRET:MjAyNkV0aGlvcGlhTmF0aW9uYWxNaWNyb2ZpbmFuY2VQbGF0Zm9ybVNlY3JldEtleQ==}
-  access-token-expiry-ms: 3600000        # 1 hour
-  refresh-token-expiry-ms: 2592000000    # 30 days
+  secret: ${JWT_SECRET:microfinance-super-secret-jwt-key-2024-national-platform}
+  expiration-ms: 3600000
+  refresh-expiration-ms: 86400000
 
-# ── Auth business rules ───────────────────────────────────────────────────────
-auth:
-  max-failed-attempts: 5
-  lockout-duration-minutes: 30
-  refresh-token-validity-days: 30
-  otp-validity-minutes: 5
-  otp-max-attempts: 3
-
-# ── Logging ───────────────────────────────────────────────────────────────────
 logging:
   level:
-    com.microfinance: DEBUG
-    org.springframework.security: DEBUG
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    com.microfinance.auth: INFO
+    org.springframework.security: WARN
+    org.flywaydb: INFO
